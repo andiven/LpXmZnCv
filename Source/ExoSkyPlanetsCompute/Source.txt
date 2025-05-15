@@ -1,0 +1,1 @@
+Compute Shader boilerplate from https://unreal.shadeup.dev/

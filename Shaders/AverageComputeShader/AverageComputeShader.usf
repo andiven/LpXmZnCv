@@ -1,0 +1,32 @@
+#include "/Engine/Public/Platform.ush"
+
+Buffer<int> Input;
+float4 HeightChannel;
+Texture2D<float4> AverageTexture;
+SamplerState AverageTextureSampler;
+RWBuffer<float> Output;
+
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
+void AverageComputeShader(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint GroupIndex : SV_GroupIndex )
+{
+
+    // Brute Force "Averaging" of a downsampled section height texture. This is in case of no mipmapping.
+    int res = 32;
+    float texelsize = 1. / float(res - 1);
+    float4 result = float4(0.0,0.0,0.0,0.0);
+
+    for(int x = 0; x < res; x++) {
+    for(int y = 0; y < res; y++) {
+        result += AverageTexture.SampleLevel(AverageTextureSampler, float2(float(x) * texelsize, float(y) * texelsize), 0.0);
+    }}
+    result *= HeightChannel;
+
+    float Height = result.x + result.y + result.z;
+    Height /= float(res*res);
+
+    //result = AverageTexture.SampleLevel(AverageTextureSampler, float2(0.5,0.5), 1000.); //This is the fastest way of doing this.
+
+    Output[0] = Height;
+}

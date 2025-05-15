@@ -1,0 +1,125 @@
+float3 OctahedronDecoding(float2 n)
+{
+	float3 OutN;
+
+	OutN.x = (n.x - n.y);
+	OutN.y = (n.x + n.y) - 1.0;
+	OutN.z = ( 1.0 - abs(OutN.x) - abs(OutN.y));
+
+	OutN = normalize( OutN );
+	return OutN;
+}
+/* Hash Without Sine by Dave_Hoskins on Shadertoy https://www.shadertoy.com/view/4djSRW
+MIT License...
+Copyright (c)2014 David Hoskins.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.*/
+float3 hash33(float3 p3)
+{
+	p3 = frac(p3 * float3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz+33.33);
+    return frac((p3.xxy + p3.yxx)*p3.zyx);
+}
+
+// Adaptation of smooth voronoi 2D and Texture Variation #?
+
+// ORIGINAL LICENSE OF SMOOTH VORONOI 2D
+
+// The MIT License
+// Copyright © 2014 Inigo Quilez
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// Smooth Voronoi - avoiding aliasing, by replacing the usual min() function, which is
+// discontinuous, with a smooth version. That can help preventing some aliasing, and also
+// provides with more artistic control of the final procedural textures/models.
+
+// More Voronoi shaders:
+//
+// Exact edges:  https://www.shadertoy.com/view/ldl3W8
+// Hierarchical: https://www.shadertoy.com/view/Xll3zX
+// Smooth:       https://www.shadertoy.com/view/ldB3zc
+// Voronoise:    https://www.shadertoy.com/view/Xd23Dh
+
+float3 hash3( float3 x )
+{
+	x = float3( dot(x,float3(127.1,311.7, 74.7)),
+				dot(x,float3(269.5,183.3,246.1)),
+				dot(x,float3(113.5,271.9,124.6)));
+
+	return frac(sin(x)*43758.5453123);
+}
+
+float3x3 rotateZ(float theta) {
+	float c = cos(theta);
+	float s = sin(theta);
+	return float3x3(
+		float3(c, -s, 0),
+		float3(s, c, 0),
+		float3(0, 0, 1)
+	);
+}
+
+float2 celluvs(float3 p, float3 n, float2 uvscale)
+{   
+	float3 forward = normalize(n);
+	float3 right = normalize(cross(forward, float3(0.,1.,0.)));
+	float3 up = cross(right, forward);
+	
+	float2 offset = hash3(n / 0.1 + 2.).xy;
+	float angle = hash3(n / 0.1).x * 3.1415 * 2.0;
+	float3x3 normalmatrix = float3x3(right, up, forward);
+
+	float2 tp = mul(mul(normalmatrix, p), rotateZ(angle)).xy * uvscale + .5;
+	
+	return tp + offset;
+}
+
+//Modified to be 3D, have contrast preservation, and sample textures per cell.
+// The parameter w controls the smoothness
+float4 textureSplat(float3 x, Texture2D tex_in, SamplerState tex_inSampler, float2 uvscale)
+{
+	float3 n = floor( x );
+	float3 f = frac( x );
+
+	//float2 uvs = celluvs(x, g+n+o) * uvscale;
+
+	float4 m = float4( 0.0, 0.0, 0.0, 0.0);
+	float w1 = 0.0;
+	float w2 = 0.0;
+	for( int j=-1; j<=1; j++ )
+	for( int i=-1; i<=1; i++ )
+	for( int k=-1; k<=1; k++ )
+	{
+		float3 g = float3( float(i),float(j),float(k) );
+		float3 o = hash3( n + g );
+			
+		float3 r = g - f + o;
+		float d = dot(r,r);
+		
+		float2 uvs = celluvs(x, g+n+o ,uvscale);
+		float w = exp(-4.*d) ;
+		float4 col = tex_in.SampleLevel(tex_inSampler, uvs, 0.0);
+
+		m += w*col;
+		w1 += w;
+		w2 += w*w;
+	}
+	float4 mean = tex_in.SampleLevel(tex_inSampler, float2(.5,.5), 100.0);
+	return mean + (m-w1*mean)/sqrt(w2);
+}

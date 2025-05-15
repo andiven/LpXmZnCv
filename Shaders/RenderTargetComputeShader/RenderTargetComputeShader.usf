@@ -1,0 +1,29 @@
+#include "/ExoSkyPlanetsComputeShaders/lib/ExoSkyShaderLibrary.ush"
+
+#include "/Engine/Generated/Material.ush"
+#include "/Engine/Public/Platform.ush"
+
+RWTexture2D<float4> RenderTarget;
+uint Width;
+
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
+void RenderTargetComputeShader(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint GroupIndex : SV_GroupIndex )
+{
+	float4 SvPosition = float4(DispatchThreadId.xy, 0, 0);
+	FMaterialPixelParameters MaterialParameters = MakeInitializedMaterialPixelParameters();
+#if NUM_TEX_COORD_INTERPOLATORS	
+	UNROLL
+	for(int i = 0; i < NUM_TEX_COORD_INTERPOLATORS; i++)
+	{
+		MaterialParameters.TexCoords[i] = ((SvPosition.xy + 0.5) / float(Width));
+	}
+#endif
+	
+	FPixelMaterialInputs PixelMaterialInputs = (FPixelMaterialInputs)0;
+
+	CalcMaterialParameters(MaterialParameters, PixelMaterialInputs, SvPosition, true);
+
+	RenderTarget[DispatchThreadId.xy] = float4(GetMaterialEmissive(PixelMaterialInputs),0.0);
+}

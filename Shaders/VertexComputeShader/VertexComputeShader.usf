@@ -1,0 +1,59 @@
+#include "/Engine/Public/Platform.ush"
+#include "/ExoSkyPlanetsComputeShaders/lib/ExoSkyShaderLibrary.ush"
+
+int Width;
+float3 RebasePosition;
+float PlanetRadius;
+Buffer<float2> UVs;
+Texture2D<float4> PositionTexture;
+Texture2D<float4> NormalTexture;
+SamplerState BilinearSampler;
+SamplerState PointSampler;
+
+struct FOutput
+{
+    float4 VertexPosition;
+    float4 VertexNormal;
+};
+
+RWStructuredBuffer<FOutput> Output;
+
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
+void VertexComputeShader(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint GroupIndex : SV_GroupIndex )
+{
+    int Index = DispatchThreadId.y * Width + DispatchThreadId.x;
+    uint2 ClampedEdges = DispatchThreadId.xy;
+    ClampedEdges.x = clamp(ClampedEdges.x, 1, Width - 2);
+    ClampedEdges.y = clamp(ClampedEdges.y, 1, Width - 2);
+
+    float2 UV = float2(ClampedEdges) / float(Width - 1);
+
+    float3 Position = PositionTexture.SampleLevel(BilinearSampler, UV, 0.0).rgb;
+    float3 Normal = OctahedronDecoding(NormalTexture.SampleLevel(BilinearSampler, UV, 0.0).rg);
+
+    float texelSize = 1.0 / float(Width - 1);
+
+    //float3 posNW = 10000. * PositionTexture.SampleLevel(BilinearSampler, UV + float2(0.0, 0.0), 0.0).rgb;
+    //float3 posNE = 10000. * PositionTexture.SampleLevel(BilinearSampler, UV + float2(texelSize, 0.0), 0.0).rgb;
+    //float3 posSW = 10000. * PositionTexture.SampleLevel(BilinearSampler, UV - float2(0.0, texelSize), 0.0).rgb;
+    //float3 posSE = 10000. * PositionTexture.SampleLevel(BilinearSampler, UV - float2(texelSize, texelSize), 0.0).rgb;
+
+    //float triangleOrientation = 0.0;
+    //if(distance(posNW, posSE) < distance(posSW, posSE)) {triangleOrientation = 1.0}
+
+    //Align the edge between the two vertices with the most similar normal vectors.
+
+    float3 nw = OctahedronDecoding(NormalTexture.SampleLevel(BilinearSampler, UV + float2( 0., 0.), 0.0).rg);
+    float3 ne = OctahedronDecoding(NormalTexture.SampleLevel(BilinearSampler, UV + float2(texelSize, 0.), 0.0).rg);
+    float3 sw = OctahedronDecoding(NormalTexture.SampleLevel(BilinearSampler, UV + float2( 0., texelSize), 0.0).rg);
+    float3 se = OctahedronDecoding(NormalTexture.SampleLevel(BilinearSampler, UV + float2(texelSize, texelSize), 0.0).rg);
+
+    float triangleOrientation = 0.0;
+
+    if(dot(nw, se) < dot(sw, ne)) {triangleOrientation = 1.0;}
+
+    Output[Index].VertexPosition = float4(Position, float(Index));
+    Output[Index].VertexNormal = float4(Normal, triangleOrientation);
+}
